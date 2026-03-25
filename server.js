@@ -221,8 +221,8 @@ async function handleCampaignLead(phoneNumber, message) {
   const bloodPackageLink = process.env.BLOOD_PACKAGE_LINK || 'https://www.airmedlabs.com/';
   const bookingLink = process.env.BOOKING_LINK || `https://wa.me/${phoneNumber}?text=I%20want%20to%20book`;
   
-  console.log(`📤 Sending welcome template to customer: ${phoneNumber}`);
-  await sendWatiTemplate(phoneNumber, 'health_checkup_welcome', [
+  const leadTemplate = process.env.LEAD_TEMPLATE_NAME || 'health_checkup_welcome';
+  await sendWatiTemplate(phoneNumber, leadTemplate, [
     { name: '1', value: mammographyLink },
     { name: '2', value: dexaLink },
     { name: '3', value: bloodPackageLink },
@@ -235,7 +235,8 @@ async function handleCampaignLead(phoneNumber, message) {
   const currentTime = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
   
   console.log(`📤 Sending notification to executive: ${executive.whatsapp}`);
-  await sendWatiTemplate(executive.whatsapp, 'executive_lead_notification', [
+  const execTemplate = process.env.EXECUTIVE_TEMPLATE_NAME || 'executive_lead_notification';
+  await sendWatiTemplate(executive.whatsapp, execTemplate, [
     { name: '1', value: phoneNumber },
     { name: '2', value: callLink },
     { name: '3', value: whatsappChatLink },
