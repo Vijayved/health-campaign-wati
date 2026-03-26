@@ -33,6 +33,8 @@ const leadSchema = new mongoose.Schema({
   },
   source: { type: String, default: 'WATI_Campaign' },
   campaign: { type: String, default: 'health_checkup' },
+  assignedCount: { type: Number, default: 0 },
+  lastAssignedAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
@@ -41,42 +43,44 @@ const Lead = mongoose.model('Lead', leadSchema);
 
 // ==================== Executive Configuration ====================
 const executives = [
-  { name: 'Aditi', phone: '8488931212', whatsapp: '8488931212', active: true, leadCount: 0 },
-  { name: 'Khyati', phone: '7490029085', whatsapp: '7490029085', active: true, leadCount: 0 },
-  { name: 'Jay', phone: '9274682553', whatsapp: '9274682553', active: true, leadCount: 0 },
-  { name: 'Mital', phone: '9558591212', whatsapp: '9558591212', active: true, leadCount: 0 }
+  { name: 'Aditi', phone: '8488931212', whatsapp: '8488931212', active: true, totalAssigned: 0 },
+  { name: 'Khyati', phone: '7490029085', whatsapp: '7490029085', active: true, totalAssigned: 0 },
+  { name: 'Jay', phone: '9274682553', whatsapp: '9274682553', active: true, totalAssigned: 0 },
+  { name: 'Mital', phone: '9558591212', whatsapp: '9558591212', active: true, totalAssigned: 0 }
 ];
 
-let currentExecutiveIndex = 0;
+let currentRoundRobinIndex = 0;
 
+// Get next executive (Round Robin)
 function getNextExecutive() {
   const activeExecs = executives.filter(e => e.active);
   if (activeExecs.length === 0) return null;
-  const exec = activeExecs[currentExecutiveIndex % activeExecs.length];
-  currentExecutiveIndex++;
+  const exec = activeExecs[currentRoundRobinIndex % activeExecs.length];
+  currentRoundRobinIndex++;
   return exec;
+}
+
+// Get executive with least assignments (for existing leads)
+function getLeastAssignedExecutive() {
+  const activeExecs = executives.filter(e => e.active);
+  if (activeExecs.length === 0) return null;
+  return activeExecs.reduce((min, exec) => 
+    exec.totalAssigned < min.totalAssigned ? exec : min, activeExecs[0]);
 }
 
 // ==================== WATI API Configuration ====================
 const WATI_BASE_URL = process.env.WATI_API_URL || 'https://live-mt-server.wati.io/1110';
 const WATI_API_KEY = process.env.WATI_API_KEY;
 
-// Send WhatsApp Template Message - CORRECT WATI FORMAT
+// Send WhatsApp Template Message
 async function sendWatiTemplate(phoneNumber, templateName, params = []) {
   try {
-    // Clean phone number (remove +91, get 10 digits)
     let cleanPhone = phoneNumber.replace(/^\+91/, '').replace(/[^0-9]/g, '');
-    
-    // CORRECT URL: /api/v1/sendTemplateMessages
     const url = `${WATI_BASE_URL}/api/v1/sendTemplateMessages`;
     
-    // Format parameters as per WATI requirement
     const parameters = {};
-    params.forEach(p => {
-      parameters[p.name] = p.value;
-    });
+    params.forEach(p => { parameters[p.name] = p.value; });
     
-    // CORRECT PAYLOAD STRUCTURE
     const payload = {
       template_name: templateName,
       broadcast_name: `Health_Campaign_${Date.now()}`,
@@ -84,30 +88,16 @@ async function sendWatiTemplate(phoneNumber, templateName, params = []) {
       parameters: parameters
     };
     
-    console.log(`\n📤 ===== SENDING TEMPLATE =====`);
-    console.log(`   URL: ${url}`);
-    console.log(`   Phone: ${cleanPhone}`);
-    console.log(`   Template: ${templateName}`);
-    console.log(`   Payload:`, JSON.stringify(payload, null, 2));
+    console.log(`📤 Sending template to ${cleanPhone}: ${templateName}`);
     
     const response = await axios.post(url, payload, {
-      headers: {
-        'Authorization': WATI_API_KEY,
-        'Content-Type': 'application/json'
-      }
+      headers: { 'Authorization': WATI_API_KEY, 'Content-Type': 'application/json' }
     });
     
-    console.log(`✅ TEMPLATE SENT SUCCESSFULLY to ${cleanPhone}`);
-    console.log(`   Response:`, JSON.stringify(response.data, null, 2));
+    console.log(`✅ Template sent to ${cleanPhone}`);
     return response.data;
   } catch (error) {
-    console.error(`❌ TEMPLATE FAILED for ${phoneNumber}:`);
-    if (error.response) {
-      console.error(`   Status: ${error.response.status}`);
-      console.error(`   Error:`, JSON.stringify(error.response.data, null, 2));
-    } else {
-      console.error(`   Error: ${error.message}`);
-    }
+    console.error(`❌ Template failed:`, error.response?.data || error.message);
     return null;
   }
 }
@@ -120,10 +110,7 @@ async function sendWatiText(phoneNumber, text) {
     const payload = { text };
     
     const response = await axios.post(url, payload, {
-      headers: {
-        'Authorization': WATI_API_KEY,
-        'Content-Type': 'application/json'
-      }
+      headers: { 'Authorization': WATI_API_KEY, 'Content-Type': 'application/json' }
     });
     
     console.log(`✅ Text sent to ${cleanPhone}`);
@@ -169,34 +156,69 @@ app.post('/webhook/wati', async (req, res) => {
 
 // Handle New Campaign Lead
 async function handleCampaignLead(phoneNumber) {
-  console.log('\n🎯 ===== NEW CAMPAIGN LEAD =====');
+  console.log('\n🎯 ===== CAMPAIGN LEAD =====');
   console.log(`📱 Phone: ${phoneNumber}`);
   
   // Check if lead exists
   const existingLead = await Lead.findOne({ phoneNumber, campaign: 'health_checkup' });
+  
+  let executive;
+  let isNewLead = false;
+  
   if (existingLead) {
-    console.log(`⚠️ Lead already exists: ${existingLead.status} (${existingLead.executiveAssigned})`);
-    return;
+    // Existing lead - assign to DIFFERENT executive (least assigned)
+    console.log(`⚠️ Existing lead found. Previous: ${existingLead.executiveAssigned}`);
+    console.log(`   Previous count: ${existingLead.assignedCount}`);
+    
+    // Get executive with least total assignments (excluding current if possible)
+    const currentExec = executives.find(e => e.name === existingLead.executiveAssigned);
+    const otherExecs = executives.filter(e => e.active && e.name !== existingLead.executiveAssigned);
+    
+    if (otherExecs.length > 0) {
+      // Assign to executive with least total assignments among others
+      executive = otherExecs.reduce((min, exec) => 
+        exec.totalAssigned < min.totalAssigned ? exec : min, otherExecs[0]);
+      console.log(`🔄 Assigning to DIFFERENT executive: ${executive.name} (load: ${executive.totalAssigned})`);
+    } else {
+      // Only one executive available
+      executive = currentExec;
+      console.log(`⚠️ Only one executive available: ${executive.name}`);
+    }
+    
+    // Update lead with new executive
+    existingLead.executiveAssigned = executive.name;
+    existingLead.executivePhone = executive.whatsapp;
+    existingLead.assignedCount += 1;
+    existingLead.lastAssignedAt = new Date();
+    existingLead.status = 'assigned';
+    existingLead.updatedAt = new Date();
+    await existingLead.save();
+    console.log(`✅ Lead updated - assigned count: ${existingLead.assignedCount}`);
+    
+  } else {
+    // New lead - assign via round robin
+    executive = getNextExecutive();
+    if (!executive) {
+      console.log('❌ No executives available');
+      return;
+    }
+    isNewLead = true;
+    
+    const lead = new Lead({
+      phoneNumber,
+      executiveAssigned: executive.name,
+      executivePhone: executive.whatsapp,
+      status: 'assigned',
+      assignedCount: 1,
+      lastAssignedAt: new Date()
+    });
+    await lead.save();
+    console.log(`✅ New lead saved: ${lead._id}`);
   }
   
-  // Assign executive
-  const executive = getNextExecutive();
-  if (!executive) {
-    console.log('❌ No executives available');
-    return;
-  }
-  
-  console.log(`👤 Assigned to: ${executive.name} (${executive.whatsapp})`);
-  
-  // Save lead
-  const lead = new Lead({
-    phoneNumber,
-    executiveAssigned: executive.name,
-    executivePhone: executive.whatsapp,
-    status: 'assigned'
-  });
-  await lead.save();
-  console.log(`✅ Lead saved: ${lead._id}`);
+  // Update executive total assigned count
+  executive.totalAssigned += 1;
+  console.log(`📊 ${executive.name} total assigned: ${executive.totalAssigned}`);
   
   // Template names
   const leadTemplate = 'campaign_women';
@@ -208,31 +230,37 @@ async function handleCampaignLead(phoneNumber) {
   const bloodPackageLink = 'https://www.airmedlabs.com/';
   const bookingLink = `https://wa.me/${phoneNumber}?text=I%20want%20to%20book%20a%20test`;
   
-  // Send to customer
-  console.log(`\n📤 Sending to CUSTOMER (${leadTemplate}):`);
-  await sendWatiTemplate(phoneNumber, leadTemplate, [
-    { name: '1', value: mammographyLink },
-    { name: '2', value: dexaLink },
-    { name: '3', value: bloodPackageLink },
-    { name: '4', value: bookingLink }
-  ]);
+  // Send to customer (only for new leads)
+  if (isNewLead) {
+    console.log(`\n📤 Sending WELCOME to CUSTOMER (${leadTemplate}):`);
+    await sendWatiTemplate(phoneNumber, leadTemplate, [
+      { name: '1', value: mammographyLink },
+      { name: '2', value: dexaLink },
+      { name: '3', value: bloodPackageLink },
+      { name: '4', value: bookingLink }
+    ]);
+  } else {
+    // For existing leads, send a reminder text instead of full template
+    console.log(`\n📤 Sending REMINDER to CUSTOMER: ${phoneNumber}`);
+    await sendWatiText(phoneNumber, `👋 Thank you for your interest! Our executive ${executive.name} will assist you shortly.\n\n📞 Need immediate help? WhatsApp: https://wa.me/${executive.whatsapp}`);
+  }
   
-  // Send to executive
-  console.log(`\n📤 Sending to EXECUTIVE (${execTemplate}):`);
+  // Send notification to executive (always)
+  console.log(`\n📤 Sending NOTIFICATION to EXECUTIVE (${execTemplate}):`);
   const callLink = `tel:+91${executive.phone}`;
   const whatsappChatLink = `https://wa.me/${executive.whatsapp}?text=Hi%20${encodeURIComponent(executive.name)}%2C%20New%20lead%20${phoneNumber}`;
   const currentTime = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  const leadType = isNewLead ? 'NEW LEAD' : `RETURNING LEAD (${existingLead?.assignedCount || 1} times)`;
   
   await sendWatiTemplate(executive.whatsapp, execTemplate, [
-    { name: '1', value: phoneNumber },
+    { name: '1', value: `${phoneNumber} - ${leadType}` },
     { name: '2', value: callLink },
     { name: '3', value: whatsappChatLink },
     { name: '4', value: currentTime }
   ]);
   
   console.log(`\n✅ Lead processing complete for ${phoneNumber}`);
-  executive.leadCount++;
-  console.log(`📊 ${executive.name} now has ${executive.leadCount} leads`);
+  console.log(`   Executive: ${executive.name} | Type: ${leadType}`);
 }
 
 // Handle Patient Replies
@@ -275,15 +303,33 @@ app.get('/api/stats', async (req, res) => {
   for (const exec of executives) {
     const count = await Lead.countDocuments({ campaign: 'health_checkup', executiveAssigned: exec.name });
     const conv = await Lead.countDocuments({ campaign: 'health_checkup', executiveAssigned: exec.name, status: 'converted' });
-    execStats.push({ name: exec.name, phone: exec.phone, totalLeads: count, converted: conv, conversionRate: count > 0 ? ((conv/count)*100).toFixed(1) : 0 });
+    execStats.push({ 
+      name: exec.name, 
+      phone: exec.phone, 
+      totalLeads: count, 
+      totalAssigned: exec.totalAssigned,
+      converted: conv, 
+      conversionRate: count > 0 ? ((conv/count)*100).toFixed(1) : 0 
+    });
   }
   
-  res.json({ success: true, stats: { totalLeads: total, todayLeads, converted, assigned }, executiveStats: execStats });
+  res.json({ 
+    success: true, 
+    stats: { totalLeads: total, todayLeads, converted, assigned }, 
+    executiveStats: execStats,
+    roundRobinIndex: currentRoundRobinIndex % executives.filter(e => e.active).length
+  });
 });
 
 app.put('/api/leads/:id', async (req, res) => {
   const lead = await Lead.findByIdAndUpdate(req.params.id, { status: req.body.status, updatedAt: new Date() }, { new: true });
   res.json({ success: true, data: lead });
+});
+
+app.post('/api/executives/reset', async (req, res) => {
+  executives.forEach(exec => exec.totalAssigned = 0);
+  currentRoundRobinIndex = 0;
+  res.json({ success: true, message: 'All executive counters reset' });
 });
 
 app.get('/health', (req, res) => {
@@ -303,6 +349,13 @@ app.listen(PORT, () => {
   console.log(`📊 Dashboard: http://localhost:${PORT}`);
   console.log(`🔗 Webhook URL: http://localhost:${PORT}/webhook/wati`);
   console.log('='.repeat(60));
-  console.log(`📌 Templates: campaign_women & new_lead_campaign`);
+  console.log('📌 ROUND ROBIN RULES:');
+  console.log('   • New customer → Next executive (Round Robin)');
+  console.log('   • Existing customer → Different executive (Least loaded)');
+  console.log('='.repeat(60));
+  console.log('👥 Executives:');
+  executives.forEach((exec, i) => {
+    console.log(`   ${i+1}. ${exec.name} - ${exec.phone}`);
+  });
   console.log('='.repeat(60));
 });
