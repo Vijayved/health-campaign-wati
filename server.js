@@ -70,13 +70,17 @@ function getDifferentExecutive(currentName) {
 const WATI_BASE_URL = process.env.WATI_API_URL || 'https://live-mt-server.wati.io/1110';
 const WATI_API_KEY = process.env.WATI_API_KEY;
 
+// Send WhatsApp Template Message - CORRECT FORMAT
 async function sendWatiTemplate(phoneNumber, templateName, params = []) {
   try {
     let cleanPhone = phoneNumber.replace(/^\+91/, '').replace(/[^0-9]/g, '');
     const url = `${WATI_BASE_URL}/api/v1/sendTemplateMessages`;
     
-    const parameters = {};
-    params.forEach(p => { parameters[p.name] = p.value; });
+    // IMPORTANT: WATI expects parameters as array with name and value
+    const parameters = params.map(p => ({
+      name: p.name,
+      value: p.value
+    }));
     
     const payload = {
       template_name: templateName,
@@ -85,7 +89,12 @@ async function sendWatiTemplate(phoneNumber, templateName, params = []) {
       parameters: parameters
     };
     
-    console.log(`📤 Sending template to ${cleanPhone}: ${templateName}`);
+    console.log(`\n📤 SENDING TEMPLATE:`);
+    console.log(`   URL: ${url}`);
+    console.log(`   Template: ${templateName}`);
+    console.log(`   Phone: ${cleanPhone}`);
+    console.log(`   Params:`, JSON.stringify(parameters, null, 2));
+    console.log(`   Full Payload:`, JSON.stringify(payload, null, 2));
     
     const response = await axios.post(url, payload, {
       headers: { 
@@ -94,7 +103,8 @@ async function sendWatiTemplate(phoneNumber, templateName, params = []) {
       }
     });
     
-    console.log(`✅ Template sent to ${cleanPhone}`);
+    console.log(`✅ Template sent successfully to ${cleanPhone}`);
+    console.log(`   Response:`, JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error) {
     console.error(`❌ Template failed for ${phoneNumber}:`);
@@ -108,6 +118,7 @@ async function sendWatiTemplate(phoneNumber, templateName, params = []) {
   }
 }
 
+// Send Text Message
 async function sendWatiText(phoneNumber, text) {
   try {
     let cleanPhone = phoneNumber.replace(/^\+91/, '').replace(/[^0-9]/g, '');
@@ -129,74 +140,49 @@ async function sendWatiText(phoneNumber, text) {
   }
 }
 
-// ==================== Webhook with FULL LOGGING ====================
+// ==================== Webhook ====================
 app.post('/webhook/wati', async (req, res) => {
   console.log('\n' + '='.repeat(60));
   console.log('📨 WATI WEBHOOK RECEIVED');
   console.log('='.repeat(60));
   console.log('Time:', new Date().toISOString());
   console.log('Full Body:', JSON.stringify(req.body, null, 2));
-  console.log('='.repeat(60));
   
   try {
     const data = req.body;
     
-    // Extract phone number - try all possible fields
     let phoneNumber = data.waId || data.phoneNumber || data.from || data.sender;
-    
-    // Extract message - try all possible fields
     let message = data.text || data.message || data.body;
     
-    // Handle button clicks
-    if (data.buttonReply?.text) {
-      message = data.buttonReply.text;
-      console.log('🔘 Button Reply:', message);
-    }
-    if (data.interactiveButtonReply?.title) {
-      message = data.interactiveButtonReply.title;
-      console.log('🔘 Interactive Button:', message);
-    }
-    if (data.listReply?.title) {
-      message = data.listReply.title;
-      console.log('📋 List Reply:', message);
-    }
+    if (data.buttonReply?.text) message = data.buttonReply.text;
+    if (data.interactiveButtonReply?.title) message = data.interactiveButtonReply.title;
     
-    console.log(`\n📞 Extracted Phone: ${phoneNumber}`);
-    console.log(`💬 Extracted Message: ${message}`);
-    console.log(`📝 Type: ${data.type}`);
+    console.log(`\n📞 Phone: ${phoneNumber}`);
+    console.log(`💬 Message: ${message}`);
     
     if (!phoneNumber) {
-      console.log('⚠️ No phone number found!');
+      console.log('⚠️ No phone number');
       return res.status(200).send('OK');
     }
     
-    // Clean phone number
     phoneNumber = phoneNumber.replace(/^\+91/, '').replace(/[^0-9]/g, '');
-    console.log(`📱 Cleaned Phone: ${phoneNumber}`);
+    console.log(`📱 Cleaned: ${phoneNumber}`);
     
-    // Check for Book Now
     const isBookNow = message && (
       message.toLowerCase() === 'book now' || 
       message.toLowerCase().includes('book now') ||
       message.toLowerCase() === 'book'
     );
     
-    console.log(`🎯 Is Book Now? ${isBookNow}`);
-    
     if (isBookNow) {
-      console.log('✅ Triggering Campaign Lead Handler');
       await handleCampaignLead(phoneNumber);
     } else if (message && message.trim().length > 0) {
-      console.log('💬 Handling as Patient Reply');
       await handlePatientReply(phoneNumber, message);
-    } else {
-      console.log('⚠️ Empty or non-text message, ignoring');
     }
     
-    console.log('\n✅ Webhook processed, sending 200 OK');
     res.status(200).send('OK');
   } catch (error) {
-    console.error('❌ Webhook error:', error);
+    console.error('Webhook error:', error);
     res.status(200).send('OK');
   }
 });
@@ -212,34 +198,24 @@ async function handleCampaignLead(phoneNumber) {
   
   let executive;
   let isNewLead = false;
-  let reminderCount = 0;
   
   if (existingLead) {
-    reminderCount = existingLead.assignedCount + 1;
-    console.log(`⚠️ Existing lead found:`);
-    console.log(`   Previous Executive: ${existingLead.executiveAssigned}`);
-    console.log(`   Times Assigned: ${existingLead.assignedCount}`);
-    
+    console.log(`⚠️ Existing lead - Previous: ${existingLead.executiveAssigned}`);
     executive = getDifferentExecutive(existingLead.executiveAssigned);
-    console.log(`🔄 Assigning to different executive: ${executive.name} (total: ${executive.totalAssigned})`);
+    console.log(`🔄 Re-assigning to: ${executive.name}`);
     
     existingLead.executiveAssigned = executive.name;
     existingLead.executivePhone = executive.whatsapp;
     existingLead.assignedCount += 1;
     existingLead.lastAssignedAt = new Date();
     existingLead.status = 'assigned';
-    existingLead.updatedAt = new Date();
     await existingLead.save();
-    console.log(`✅ Lead updated`);
     
   } else {
     executive = getNextExecutive();
-    if (!executive) {
-      console.log('❌ No executives available!');
-      return;
-    }
+    if (!executive) return console.log('❌ No executives');
     isNewLead = true;
-    console.log(`✨ New lead, assigning via round robin: ${executive.name}`);
+    console.log(`✨ New lead - Assigning: ${executive.name}`);
     
     const lead = new Lead({
       phoneNumber,
@@ -250,23 +226,28 @@ async function handleCampaignLead(phoneNumber) {
       lastAssignedAt: new Date()
     });
     await lead.save();
-    console.log(`✅ New lead saved with ID: ${lead._id}`);
   }
   
   executive.totalAssigned += 1;
-  console.log(`📊 ${executive.name} total assigned: ${executive.totalAssigned}`);
+  
+  // Get links from environment variables
+  const mammographyLink = process.env.MAMMOGRAPHY_LINK || 'https://www.nibib.nih.gov/sites/default/files/2022-05/Fact-Sheet-Mammography.pdf';
+  const dexaLink = process.env.DEXA_LINK || 'https://www.youtube.com/watch?v=HkLuviUi8Mc';
+  const bloodPackageLink = process.env.BLOOD_PACKAGE_LINK || 'https://www.airmedlabs.com/';
+  const bookingLink = process.env.BOOKING_LINK || `https://wa.me/${phoneNumber}?text=I%20want%20to%20book%20a%20test`;
+  
+  console.log(`\n📌 Links being sent:`);
+  console.log(`   {{1}} (Mammography): ${mammographyLink}`);
+  console.log(`   {{2}} (DEXA): ${dexaLink}`);
+  console.log(`   {{3}} (Blood Package): ${bloodPackageLink}`);
+  console.log(`   {{4}} (Book Now): ${bookingLink}`);
   
   const leadTemplate = 'campaign_women';
   const execTemplate = 'new_lead_campaign';
   
-  const mammographyLink = 'https://www.nibib.nih.gov/sites/default/files/2022-05/Fact-Sheet-Mammography.pdf';
-  const dexaLink = 'https://www.youtube.com/watch?v=HkLuviUi8Mc';
-  const bloodPackageLink = 'https://www.airmedlabs.com/';
-  const bookingLink = `https://wa.me/${phoneNumber}?text=I%20want%20to%20book%20a%20test`;
-  
-  // Send to customer
+  // Send to customer (always send template for new leads, reminder text for existing)
   if (isNewLead) {
-    console.log(`\n📤 Sending WELCOME TEMPLATE to customer (${leadTemplate}):`);
+    console.log(`\n📤 Sending TEMPLATE to customer: ${leadTemplate}`);
     await sendWatiTemplate(phoneNumber, leadTemplate, [
       { name: '1', value: mammographyLink },
       { name: '2', value: dexaLink },
@@ -274,16 +255,16 @@ async function handleCampaignLead(phoneNumber) {
       { name: '4', value: bookingLink }
     ]);
   } else {
-    console.log(`\n📤 Sending REMINDER TEXT to customer:`);
+    console.log(`\n📤 Sending REMINDER text to customer:`);
     await sendWatiText(phoneNumber, `👋 Thank you for your interest! Our executive ${executive.name} will assist you shortly.\n\n📞 Chat: https://wa.me/${executive.whatsapp}`);
   }
   
   // Send to executive
-  console.log(`\n📤 Sending NOTIFICATION to executive (${execTemplate}):`);
+  console.log(`\n📤 Sending NOTIFICATION to executive: ${executive.whatsapp}`);
   const callLink = `tel:+91${executive.phone}`;
   const whatsappChatLink = `https://wa.me/${executive.whatsapp}?text=Hi%20${encodeURIComponent(executive.name)}%2C%20Lead%20${phoneNumber}`;
   const currentTime = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const leadType = isNewLead ? 'NEW' : `RETURN (${reminderCount})`;
+  const leadType = isNewLead ? 'NEW' : `RETURN (${existingLead?.assignedCount || 1})`;
   
   await sendWatiTemplate(executive.whatsapp, execTemplate, [
     { name: '1', value: `${phoneNumber} - ${leadType}` },
@@ -292,25 +273,18 @@ async function handleCampaignLead(phoneNumber) {
     { name: '4', value: currentTime }
   ]);
   
-  console.log(`\n✅ Campaign lead processing complete!`);
-  console.log(`   Executive: ${executive.name}`);
-  console.log(`   Type: ${leadType}`);
+  console.log(`\n✅ Complete! Executive: ${executive.name} | Type: ${leadType}`);
 }
 
 // Handle Patient Replies
 async function handlePatientReply(phoneNumber, message) {
-  console.log(`\n💬 Patient Reply Handler`);
-  console.log(`   Phone: ${phoneNumber}`);
-  console.log(`   Message: ${message}`);
-  
   const lead = await Lead.findOne({ phoneNumber, campaign: 'health_checkup' });
   if (!lead) {
-    console.log(`⚠️ No lead found for ${phoneNumber}`);
+    console.log(`⚠️ No lead for ${phoneNumber}`);
     return;
   }
   
-  console.log(`   Lead found: ${lead._id}`);
-  console.log(`   Executive: ${lead.executiveAssigned}`);
+  console.log(`💬 Reply: ${message}`);
   
   const msgLower = message.toLowerCase();
   if (msgLower.includes('mammography')) lead.testType = 'Mammography';
@@ -319,11 +293,9 @@ async function handlePatientReply(phoneNumber, message) {
   else if (!lead.name && message.length > 2) lead.name = message;
   
   await lead.save();
-  console.log(`   Updated lead saved`);
   
   if (lead.executivePhone) {
-    console.log(`📤 Notifying executive: ${lead.executivePhone}`);
-    await sendWatiText(lead.executivePhone, `📩 Patient ${phoneNumber} replied: "${message.substring(0, 80)}"\n\nChat: https://wa.me/${phoneNumber}`);
+    await sendWatiText(lead.executivePhone, `📩 Patient ${phoneNumber}: "${message.substring(0, 80)}"\n\nChat: https://wa.me/${phoneNumber}`);
   }
 }
 
@@ -383,8 +355,12 @@ app.listen(PORT, () => {
   console.log(`📊 Dashboard: http://localhost:${PORT}`);
   console.log(`🔗 Webhook: http://localhost:${PORT}/webhook/wati`);
   console.log('='.repeat(60));
-  console.log(`📌 Templates: campaign_women | new_lead_campaign`);
-  console.log(`📌 WATI URL: ${WATI_BASE_URL}`);
-  console.log(`📌 API Key: ${WATI_API_KEY ? '✅ Set' : '❌ Missing'}`);
+  console.log(`📌 Template: campaign_women (Customer)`);
+  console.log(`   {{1}} = MAMMOGRAPHY_LINK: ${process.env.MAMMOGRAPHY_LINK}`);
+  console.log(`   {{2}} = DEXA_LINK: ${process.env.DEXA_LINK}`);
+  console.log(`   {{3}} = BLOOD_PACKAGE_LINK: ${process.env.BLOOD_PACKAGE_LINK}`);
+  console.log(`   {{4}} = BOOKING_LINK: ${process.env.BOOKING_LINK}`);
+  console.log('='.repeat(60));
+  console.log(`📌 Template: new_lead_campaign (Executive)`);
   console.log('='.repeat(60));
 });
