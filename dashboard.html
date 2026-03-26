@@ -5,153 +5,437 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Health Campaign Dashboard</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
             background: #f0f2f5;
             padding: 20px;
         }
-        .container { max-width: 1400px; margin: 0 auto; }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        /* Header */
         .header {
             background: linear-gradient(135deg, #075e54, #128c7e);
             color: white;
-            padding: 20px 30px;
-            border-radius: 16px;
+            padding: 25px 30px;
+            border-radius: 20px;
             margin-bottom: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
-        .header h1 { font-size: 28px; margin-bottom: 8px; }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
             gap: 20px;
             margin-bottom: 30px;
         }
+        
         .stat-card {
             background: white;
             padding: 20px;
             border-radius: 16px;
             text-align: center;
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s, box-shadow 0.2s;
         }
-        .stat-card h3 { font-size: 14px; color: #666; margin-bottom: 10px; }
-        .stat-card .value { font-size: 36px; font-weight: bold; color: #075e54; }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        }
+        
+        .stat-card h3 {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #075e54;
+        }
+        
         .section {
             background: white;
-            border-radius: 16px;
-            padding: 20px;
+            border-radius: 20px;
+            padding: 25px;
             margin-bottom: 30px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
-        .section h2 { margin-bottom: 20px; font-size: 20px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
-        th { background: #f8f9fa; font-weight: 600; }
+        
+        .section h2 {
+            margin-bottom: 20px;
+            font-size: 20px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-left: 4px solid #075e54;
+            padding-left: 15px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #555;
+            font-size: 13px;
+        }
+        
+        td {
+            font-size: 14px;
+        }
+        
         .status-badge {
             padding: 4px 12px;
             border-radius: 20px;
-            font-size: 12px;
-            font-weight: 500;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-block;
         }
+        
         .status-assigned { background: #fff3e0; color: #ed6c02; }
         .status-converted { background: #e8f5e9; color: #2e7d32; }
         .status-waiting { background: #fff3e0; color: #f57c00; }
         .status-not_converted { background: #ffebee; color: #c62828; }
+        .status-new { background: #e3f2fd; color: #1976d2; }
+        
         .filter-bar {
             display: flex;
             gap: 15px;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
             flex-wrap: wrap;
+            align-items: center;
         }
-        select, input {
-            padding: 8px 12px;
+        
+        select, input, .filter-bar button {
+            padding: 10px 15px;
             border: 1px solid #ddd;
-            border-radius: 8px;
+            border-radius: 10px;
+            font-size: 14px;
+            background: white;
         }
+        
         button {
             background: #075e54;
             color: white;
             border: none;
-            padding: 8px 20px;
-            border-radius: 8px;
             cursor: pointer;
+            font-weight: 500;
+            transition: background 0.2s;
         }
-        .refresh-btn { background: #25d366; margin-left: auto; }
+        
+        button:hover {
+            background: #128c7e;
+        }
+        
+        .refresh-btn {
+            background: #25d366;
+            margin-left: auto;
+        }
+        
+        .refresh-btn:hover {
+            background: #20b859;
+        }
+        
+        .executive-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: #e8eaf6;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #3f51b5;
+        }
+        
+        select.status-select {
+            padding: 6px 10px;
+            font-size: 12px;
+            border-radius: 8px;
+        }
+        
         @media (max-width: 768px) {
-            .stats-grid { grid-template-columns: repeat(2, 1fr); }
-            th, td { font-size: 12px; padding: 8px; }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            th, td {
+                font-size: 12px;
+                padding: 8px;
+            }
+            .filter-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .refresh-btn {
+                margin-left: 0;
+            }
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .last-updated {
+            font-size: 12px;
+            color: #999;
+            margin-top: 15px;
+            text-align: right;
+        }
+        
+        .phone-link {
+            color: #075e54;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .phone-link:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🏥 Health Campaign Dashboard</h1>
-            <p>Real-time lead tracking • Round Robin Assignment</p>
+            <h1>
+                <span>🏥</span> Health Campaign Dashboard
+            </h1>
+            <p>Real-time lead tracking • Round Robin Executive Assignment • WATI Integration</p>
         </div>
+        
+        <!-- Stats Cards -->
         <div class="stats-grid" id="statsGrid">
             <div class="stat-card"><h3>Total Leads</h3><div class="value" id="totalLeads">-</div></div>
             <div class="stat-card"><h3>Today's Leads</h3><div class="value" id="todayLeads">-</div></div>
+            <div class="stat-card"><h3>This Week</h3><div class="value" id="weekLeads">-</div></div>
             <div class="stat-card"><h3>Converted</h3><div class="value" id="converted">-</div></div>
             <div class="stat-card"><h3>Waiting</h3><div class="value" id="waiting">-</div></div>
             <div class="stat-card"><h3>Not Converted</h3><div class="value" id="notConverted">-</div></div>
             <div class="stat-card"><h3>Assigned</h3><div class="value" id="assigned">-</div></div>
+            <div class="stat-card"><h3>New</h3><div class="value" id="newLeads">-</div></div>
         </div>
+        
+        <!-- Executive Performance -->
         <div class="section">
-            <h2>👥 Executive Performance</h2>
-            <table id="executiveTable">
-                <thead><tr><th>Executive</th><th>Phone</th><th>Total Leads</th><th>Converted</th><th>Rate</th> </tr</thead>
-                <tbody></tbody>
-             </table>
+            <h2>👥 Executive Performance (Round Robin)</h2>
+            <div style="overflow-x: auto;">
+                <table id="executiveTable">
+                    <thead>
+                        <tr>
+                            <th>Executive</th>
+                            <th>Phone</th>
+                            <th>Total Leads</th>
+                            <th>Converted</th>
+                            <th>Waiting</th>
+                            <th>Not Converted</th>
+                            <th>Conversion Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="7" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
+        
+        <!-- Leads Table -->
         <div class="section">
             <h2>📋 Recent Leads</h2>
             <div class="filter-bar">
-                <select id="statusFilter"><option value="">All</option><option value="assigned">Assigned</option><option value="converted">Converted</option><option value="waiting">Waiting</option><option value="not_converted">Not Converted</option></select>
-                <select id="executiveFilter"><option value="">All Executives</option><option value="Aditi">Aditi</option><option value="Khyati">Khyati</option><option value="Jay">Jay</option><option value="Mital">Mital</option></select>
-                <button onclick="loadLeads()">Apply</button>
+                <select id="statusFilter">
+                    <option value="all">All Status</option>
+                    <option value="new">New</option>
+                    <option value="assigned">Assigned</option>
+                    <option value="converted">Converted</option>
+                    <option value="waiting">Waiting</option>
+                    <option value="not_converted">Not Converted</option>
+                </select>
+                <select id="executiveFilter">
+                    <option value="all">All Executives</option>
+                    <option value="Aditi">Aditi</option>
+                    <option value="Khyati">Khyati</option>
+                    <option value="Jay">Jay</option>
+                    <option value="Mital">Mital</option>
+                </select>
+                <button onclick="loadLeads()">Apply Filters</button>
                 <button class="refresh-btn" onclick="loadAllData()">🔄 Refresh</button>
             </div>
-            <div style="overflow-x:auto;"><table id="leadsTable"><thead><tr><th>Phone</th><th>Executive</th><th>Test Type</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody></tbody></table></div>
+            <div style="overflow-x: auto;">
+                <table id="leadsTable">
+                    <thead>
+                        <tr>
+                            <th>Phone</th>
+                            <th>Name</th>
+                            <th>Executive</th>
+                            <th>Test Type</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="7" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="last-updated" id="lastUpdated"></div>
         </div>
     </div>
+    
     <script>
         const API_BASE = window.location.origin;
+        let autoRefreshInterval;
+        
         async function loadStats() {
-            const res = await fetch(`${API_BASE}/api/stats`);
-            const data = await res.json();
-            if(data.success){
-                document.getElementById('totalLeads').textContent = data.stats.totalLeads;
-                document.getElementById('todayLeads').textContent = data.stats.todayLeads;
-                document.getElementById('converted').textContent = data.stats.converted;
-                document.getElementById('waiting').textContent = data.stats.waiting;
-                document.getElementById('notConverted').textContent = data.stats.notConverted;
-                document.getElementById('assigned').textContent = data.stats.assigned;
-                const tbody = document.querySelector('#executiveTable tbody');
-                tbody.innerHTML = '';
-                data.executiveStats.forEach(e => { tbody.innerHTML += `<tr><td><strong>${e.name}</strong></td><td>${e.phone}</td><td>${e.totalLeads}</td><td>${e.converted}</td><td>${e.conversionRate}%</td></tr>`; });
+            try {
+                const res = await fetch(`${API_BASE}/api/stats`);
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('totalLeads').textContent = data.stats.totalLeads;
+                    document.getElementById('todayLeads').textContent = data.stats.todayLeads;
+                    document.getElementById('weekLeads').textContent = data.stats.weekLeads;
+                    document.getElementById('converted').textContent = data.stats.converted;
+                    document.getElementById('waiting').textContent = data.stats.waiting;
+                    document.getElementById('notConverted').textContent = data.stats.notConverted;
+                    document.getElementById('assigned').textContent = data.stats.assigned;
+                    document.getElementById('newLeads').textContent = data.stats.new;
+                    
+                    // Executive table
+                    const execTbody = document.querySelector('#executiveTable tbody');
+                    execTbody.innerHTML = '';
+                    data.executiveStats.forEach(exec => {
+                        const rateClass = exec.conversionRate >= 50 ? 'converted' : (exec.conversionRate >= 25 ? 'waiting' : 'not_converted');
+                        execTbody.innerHTML += `
+                            <tr>
+                                <td><strong>${exec.name}</strong></td>
+                                <td><a href="tel:+91${exec.phone}" class="phone-link">${exec.phone}</a></td>
+                                <td>${exec.totalLeads}</td>
+                                <td style="color: #2e7d32; font-weight: 500;">${exec.converted}</td>
+                                <td style="color: #f57c00;">${exec.waiting || 0}</td>
+                                <td style="color: #c62828;">${exec.notConverted || 0}</td>
+                                <td><span class="status-badge status-${rateClass}">${exec.conversionRate}%</span></td>
+                            </tr>
+                        `;
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
             }
         }
+        
         async function loadLeads() {
-            let url = `${API_BASE}/api/leads?limit=100`;
-            if(document.getElementById('statusFilter').value) url += `&status=${document.getElementById('statusFilter').value}`;
-            if(document.getElementById('executiveFilter').value) url += `&executive=${document.getElementById('executiveFilter').value}`;
-            const res = await fetch(url);
-            const data = await res.json();
-            if(data.success){
-                const tbody = document.querySelector('#leadsTable tbody');
-                tbody.innerHTML = '';
-                data.data.forEach(l => {
-                    tbody.innerHTML += `<tr><td>${l.phoneNumber}</td><td>${l.executiveAssigned || '-'}</td><td>${l.testType || '-'}</td><td><span class="status-badge status-${l.status}">${l.status}</span></td><td>${new Date(l.createdAt).toLocaleString()}</td><td><select onchange="updateStatus('${l._id}',this.value)"><option ${l.status==='assigned'?'selected':''} value="assigned">Assigned</option><option ${l.status==='converted'?'selected':''} value="converted">Converted</option><option ${l.status==='waiting'?'selected':''} value="waiting">Waiting</option><option ${l.status==='not_converted'?'selected':''} value="not_converted">Not Converted</option></select></td></tr>`;
-                });
+            try {
+                const status = document.getElementById('statusFilter').value;
+                const executive = document.getElementById('executiveFilter').value;
+                
+                let url = `${API_BASE}/api/leads?limit=100`;
+                if (status !== 'all') url += `&status=${status}`;
+                if (executive !== 'all') url += `&executive=${executive}`;
+                
+                const res = await fetch(url);
+                const data = await res.json();
+                
+                if (data.success) {
+                    const tbody = document.querySelector('#leadsTable tbody');
+                    tbody.innerHTML = '';
+                    
+                    if (data.data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px;">No leads found</td></tr>';
+                    } else {
+                        data.data.forEach(lead => {
+                            const date = new Date(lead.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+                            const statusClass = `status-${lead.status}`;
+                            tbody.innerHTML += `
+                                <tr>
+                                    <td><a href="https://wa.me/${lead.phoneNumber}" target="_blank" class="phone-link">${lead.phoneNumber}</a></td>
+                                    <td>${lead.name || '-'}</td>
+                                    <td><span class="executive-badge">${lead.executiveAssigned || 'Unassigned'}</span></td>
+                                    <td>${lead.testType || '-'}</td>
+                                    <td><span class="status-badge ${statusClass}">${lead.status}</span></td>
+                                    <td>${date}</td>
+                                    <td>
+                                        <select class="status-select" onchange="updateStatus('${lead._id}', this.value)">
+                                            <option value="assigned" ${lead.status === 'assigned' ? 'selected' : ''}>Assigned</option>
+                                            <option value="converted" ${lead.status === 'converted' ? 'selected' : ''}>Converted</option>
+                                            <option value="waiting" ${lead.status === 'waiting' ? 'selected' : ''}>Waiting</option>
+                                            <option value="not_converted" ${lead.status === 'not_converted' ? 'selected' : ''}>Not Converted</option>
+                                            <option value="new" ${lead.status === 'new' ? 'selected' : ''}>New</option>
+                                        </select>
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                    }
+                    
+                    document.getElementById('lastUpdated').textContent = `Last updated: ${new Date().toLocaleString()}`;
+                }
+            } catch (error) {
+                console.error('Error loading leads:', error);
+                document.querySelector('#leadsTable tbody').innerHTML = '<tr><td colspan="7" class="loading">Error loading data</td></tr>';
             }
         }
-        async function updateStatus(id,status){
-            await fetch(`${API_BASE}/api/leads/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
-            loadAllData();
+        
+        async function updateStatus(id, status) {
+            try {
+                const res = await fetch(`${API_BASE}/api/leads/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status })
+                });
+                if (res.ok) {
+                    loadAllData();
+                }
+            } catch (error) {
+                console.error('Error updating status:', error);
+            }
         }
-        async function loadAllData(){ await loadStats(); await loadLeads(); }
+        
+        async function loadAllData() {
+            await loadStats();
+            await loadLeads();
+        }
+        
+        // Initial load
         loadAllData();
-        setInterval(loadAllData, 30000);
+        
+        // Auto refresh every 30 seconds
+        autoRefreshInterval = setInterval(loadAllData, 30000);
     </script>
 </body>
 </html>
