@@ -66,44 +66,55 @@ function getDifferentExecutive(currentName) {
     exec.totalAssigned < min.totalAssigned ? exec : min, otherExecs[0]);
 }
 
+// ==================== Phone Number Normalization ====================
+function normalizePhone(number) {
+  if (!number) return '';
+  let digits = String(number).replace(/\D/g, '');
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (digits.length === 10) return '91' + digits;
+  if (digits.length === 11 && digits.startsWith('0')) return '91' + digits.slice(1);
+  if (digits.length === 12 && digits.startsWith('91')) return digits;
+  if (digits.length > 12) return digits.slice(-12);
+  return digits;
+}
+
 // ==================== WATI API Configuration ====================
 const WATI_BASE_URL = process.env.WATI_API_URL || 'https://live-mt-server.wati.io/1110';
 const WATI_API_KEY = process.env.WATI_API_KEY;
 
-// Send WhatsApp Template Message
-async function sendWatiTemplate(phoneNumber, templateName, params = []) {
+// ============================================
+// ✅ CORRECTED: Send WhatsApp Template Message
+// ============================================
+async function sendWatiTemplateMessage(whatsappNumber, templateName, parameters) {
   try {
-    let cleanPhone = phoneNumber.replace(/^\+91/, '').replace(/[^0-9]/g, '');
-    const url = `${WATI_BASE_URL}/api/v1/sendTemplateMessages`;
+    const cleanNumber = normalizePhone(whatsappNumber);
+    console.log(`\n📤 Sending template ${templateName} to ${cleanNumber}`);
     
-    const parameters = params.map(p => ({
-      name: p.name,
-      value: p.value
-    }));
+    // ✅ CORRECT URL - as per working reference
+    const url = `${WATI_BASE_URL}/api/v1/sendTemplateMessage?whatsappNumber=${encodeURIComponent(cleanNumber)}`;
     
+    // ✅ CORRECT PAYLOAD
     const payload = {
       template_name: templateName,
       broadcast_name: `Health_Campaign_${Date.now()}`,
-      receivers: [cleanPhone],
-      parameters: parameters
+      parameters: parameters || []
     };
     
-    console.log(`\n📤 SENDING TEMPLATE:`);
-    console.log(`   Template: ${templateName}`);
-    console.log(`   Phone: ${cleanPhone}`);
-    console.log(`   Params:`, JSON.stringify(parameters, null, 2));
+    console.log(`   URL: ${url}`);
+    console.log(`   Payload:`, JSON.stringify(payload, null, 2));
     
     const response = await axios.post(url, payload, {
-      headers: { 
+      headers: {
         'Authorization': WATI_API_KEY,
         'Content-Type': 'application/json'
-      }
+      },
+      timeout: 15000
     });
     
-    console.log(`✅ Template sent successfully to ${cleanPhone}`);
+    console.log(`✅ Template ${templateName} sent successfully to ${cleanNumber}`);
     return response.data;
   } catch (error) {
-    console.error(`❌ Template failed:`);
+    console.error(`❌ Template failed for ${whatsappNumber}:`);
     if (error.response) {
       console.error(`   Status: ${error.response.status}`);
       console.error(`   Error:`, JSON.stringify(error.response.data, null, 2));
@@ -114,12 +125,19 @@ async function sendWatiTemplate(phoneNumber, templateName, params = []) {
   }
 }
 
-// Send Text Message
-async function sendWatiText(phoneNumber, text) {
+// ============================================
+// ✅ CORRECTED: Send Text Message (Session Message)
+// ============================================
+async function sendWatiTextMessage(whatsappNumber, text) {
   try {
-    let cleanPhone = phoneNumber.replace(/^\+91/, '').replace(/[^0-9]/g, '');
-    const url = `${WATI_BASE_URL}/api/v1/sendSessionMessage/${cleanPhone}`;
-    const payload = { text };
+    const cleanNumber = normalizePhone(whatsappNumber);
+    console.log(`\n📤 Sending text to ${cleanNumber}`);
+    
+    // ✅ CORRECT URL
+    const url = `${WATI_BASE_URL}/api/v1/sendSessionMessage/${cleanNumber}`;
+    
+    // ✅ CORRECT PAYLOAD - messageText, NOT text
+    const payload = { messageText: text };
     
     const response = await axios.post(url, payload, {
       headers: { 
@@ -128,60 +146,79 @@ async function sendWatiText(phoneNumber, text) {
       }
     });
     
-    console.log(`✅ Text sent to ${cleanPhone}`);
+    console.log(`✅ Text sent to ${cleanNumber}`);
     return response.data;
   } catch (error) {
-    console.error(`❌ Text failed:`, error.response?.data || error.message);
+    console.error(`❌ Text failed for ${whatsappNumber}:`);
+    if (error.response) {
+      console.error(`   Status: ${error.response.status}`);
+      console.error(`   Error:`, JSON.stringify(error.response.data, null, 2));
+    } else {
+      console.error(`   Error: ${error.message}`);
+    }
     return null;
   }
 }
 
-// ==================== Webhook ====================
+// ============================================
+// ✅ WATI WEBHOOK - यहाँ WATI से Data आता है
+// ============================================
 app.post('/webhook/wati', async (req, res) => {
-  console.log('\n📨 ========== WATI WEBHOOK ==========');
-  console.log('Time:', new Date().toISOString());
-  
   try {
-    const data = req.body;
-    let phoneNumber = data.waId || data.phoneNumber || data.from;
-    let message = data.text || data.message;
+    console.log('\n📨 ========== WATI WEBHOOK RECEIVED ==========');
+    console.log('Time:', new Date().toISOString());
     
-    if (data.buttonReply?.text) message = data.buttonReply.text;
-    if (data.interactiveButtonReply?.title) message = data.interactiveButtonReply.title;
+    const msg = req.body;
+    console.log('Full Data:', JSON.stringify(msg, null, 2));
     
-    console.log(`📞 Phone: ${phoneNumber}`);
-    console.log(`💬 Message: ${message}`);
+    // Sender का WhatsApp Number
+    let senderNumber = msg.whatsappNumber || msg.from || msg.waId || msg.phoneNumber;
     
-    if (!phoneNumber) {
-      console.log('⚠️ No phone number');
+    // Message का Text
+    let messageText = '';
+    if (msg.text) messageText = msg.text;
+    else if (msg.body) messageText = msg.body;
+    else if (msg.listReply) messageText = msg.listReply.title;
+    else if (msg.buttonReply) messageText = msg.buttonReply.text || msg.buttonReply.title;
+    else if (msg.interactiveButtonReply) messageText = msg.interactiveButtonReply.title;
+    
+    console.log(`📞 From: ${senderNumber}`);
+    console.log(`💬 Message: "${messageText}"`);
+    
+    if (!senderNumber) {
+      console.log('⚠️ No sender number found');
       return res.status(200).send('OK');
     }
     
-    phoneNumber = phoneNumber.replace(/^\+91/, '').replace(/[^0-9]/g, '');
-    console.log(`📱 Cleaned: ${phoneNumber}`);
+    // Normalize phone number
+    const cleanNumber = normalizePhone(senderNumber);
+    console.log(`📱 Normalized: ${cleanNumber}`);
     
-    const isBookNow = message && (
-      message.toLowerCase() === 'book now' || 
-      message.toLowerCase().includes('book now') ||
-      message.toLowerCase() === 'book'
+    // Check if it's Book Now
+    const isBookNow = messageText && (
+      messageText.toLowerCase() === 'book now' || 
+      messageText.toLowerCase().includes('book now') ||
+      messageText.toLowerCase() === 'book'
     );
     
     if (isBookNow) {
-      console.log('🎯 Book Now detected!');
-      await handleCampaignLead(phoneNumber);
-    } else if (message && message.trim().length > 0) {
+      console.log('🎯 Book Now detected - Processing lead');
+      await handleCampaignLead(cleanNumber);
+    } else if (messageText && messageText.trim().length > 0) {
       console.log('💬 Patient reply detected');
-      await handlePatientReply(phoneNumber, message);
+      await handlePatientReply(cleanNumber, messageText);
     }
     
     res.status(200).send('OK');
   } catch (error) {
-    console.error('Webhook error:', error);
+    console.error('❌ Webhook error:', error);
     res.status(200).send('OK');
   }
 });
 
-// Handle Campaign Lead
+// ============================================
+// ✅ Handle Campaign Lead
+// ============================================
 async function handleCampaignLead(phoneNumber) {
   console.log('\n🎯 ========== CAMPAIGN LEAD ==========');
   console.log(`📱 Phone: ${phoneNumber}`);
@@ -198,7 +235,7 @@ async function handleCampaignLead(phoneNumber) {
     console.log(`   Times assigned: ${existingLead.assignedCount}`);
     
     executive = getDifferentExecutive(existingLead.executiveAssigned);
-    console.log(`🔄 Re-assigning to: ${executive.name} (total: ${executive.totalAssigned})`);
+    console.log(`🔄 Re-assigning to: ${executive.name}`);
     
     existingLead.executiveAssigned = executive.name;
     existingLead.executivePhone = executive.whatsapp;
@@ -230,7 +267,7 @@ async function handleCampaignLead(phoneNumber) {
   }
   
   executive.totalAssigned += 1;
-  console.log(`📊 ${executive.name} total assigned: ${executive.totalAssigned}`);
+  console.log(`📊 ${executive.name} total: ${executive.totalAssigned}`);
   
   // Get links from environment variables
   const mammographyLink = process.env.MAMMOGRAPHY_LINK || 'https://www.nibib.nih.gov/sites/default/files/2022-05/Fact-Sheet-Mammography.pdf';
@@ -238,47 +275,55 @@ async function handleCampaignLead(phoneNumber) {
   const bloodPackageLink = process.env.BLOOD_PACKAGE_LINK || 'https://www.airmedlabs.com/';
   const bookingLink = process.env.BOOKING_LINK || `https://wa.me/${phoneNumber}?text=I%20want%20to%20book%20a%20test`;
   
-  console.log(`\n📌 LINKS:`);
-  console.log(`   {{1}} Mammography: ${mammographyLink}`);
-  console.log(`   {{2}} DEXA: ${dexaLink}`);
-  console.log(`   {{3}} Blood Package: ${bloodPackageLink}`);
-  console.log(`   {{4}} Booking: ${bookingLink}`);
+  console.log(`\n📌 LINKS (Parameters):`);
+  console.log(`   {{1}} = ${mammographyLink}`);
+  console.log(`   {{2}} = ${dexaLink}`);
+  console.log(`   {{3}} = ${bloodPackageLink}`);
+  console.log(`   {{4}} = ${bookingLink}`);
   
   const leadTemplate = 'campaign_women';
   const execTemplate = 'new_lead_campaign';
   
+  // Parameters array for customer template
+  const leadParameters = [
+    { name: "1", value: mammographyLink },
+    { name: "2", value: dexaLink },
+    { name: "3", value: bloodPackageLink },
+    { name: "4", value: bookingLink }
+  ];
+  
   // Send to customer
   if (isNewLead) {
-    console.log(`\n📤 Sending WELCOME to customer: ${leadTemplate}`);
-    await sendWatiTemplate(phoneNumber, leadTemplate, [
-      { name: '1', value: mammographyLink },
-      { name: '2', value: dexaLink },
-      { name: '3', value: bloodPackageLink },
-      { name: '4', value: bookingLink }
-    ]);
+    console.log(`\n📤 Sending WELCOME template to customer: ${leadTemplate}`);
+    await sendWatiTemplateMessage(phoneNumber, leadTemplate, leadParameters);
   } else {
-    console.log(`\n📤 Sending REMINDER to customer:`);
-    await sendWatiText(phoneNumber, `👋 Thank you for your interest! Our executive ${executive.name} will assist you shortly.\n\n📞 Chat: https://wa.me/${executive.whatsapp}`);
+    console.log(`\n📤 Sending REMINDER text to customer:`);
+    await sendWatiTextMessage(phoneNumber, `👋 Thank you for your interest! Our executive ${executive.name} will assist you shortly.\n\n📞 Chat: https://wa.me/${executive.whatsapp}`);
   }
   
-  // Send to executive
-  console.log(`\n📤 Sending NOTIFICATION to executive: ${executive.whatsapp}`);
+  // Parameters array for executive template
   const callLink = `tel:+91${executive.phone}`;
   const whatsappChatLink = `https://wa.me/${executive.whatsapp}?text=Hi%20${encodeURIComponent(executive.name)}%2C%20Lead%20${phoneNumber}`;
   const currentTime = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
   const leadType = isNewLead ? 'NEW' : `RETURN #${reminderCount}`;
   
-  await sendWatiTemplate(executive.whatsapp, execTemplate, [
-    { name: '1', value: `${phoneNumber} - ${leadType}` },
-    { name: '2', value: callLink },
-    { name: '3', value: whatsappChatLink },
-    { name: '4', value: currentTime }
-  ]);
+  const execParameters = [
+    { name: "1", value: `${phoneNumber} - ${leadType}` },
+    { name: "2", value: callLink },
+    { name: "3", value: whatsappChatLink },
+    { name: "4", value: currentTime }
+  ];
+  
+  // Send to executive
+  console.log(`\n📤 Sending NOTIFICATION to executive: ${executive.whatsapp}`);
+  await sendWatiTemplateMessage(executive.whatsapp, execTemplate, execParameters);
   
   console.log(`\n✅ Complete! Executive: ${executive.name} | Type: ${leadType}`);
 }
 
-// Handle Patient Replies
+// ============================================
+// ✅ Handle Patient Replies
+// ============================================
 async function handlePatientReply(phoneNumber, message) {
   const lead = await Lead.findOne({ phoneNumber, campaign: 'health_checkup' });
   if (!lead) {
@@ -299,7 +344,7 @@ async function handlePatientReply(phoneNumber, message) {
   
   if (lead.executivePhone) {
     console.log(`📤 Notifying executive: ${lead.executivePhone}`);
-    await sendWatiText(lead.executivePhone, `📩 Patient ${phoneNumber} replied: "${message.substring(0, 80)}"\n\nChat: https://wa.me/${phoneNumber}`);
+    await sendWatiTextMessage(lead.executivePhone, `📩 Patient ${phoneNumber} replied: "${message.substring(0, 80)}"\n\nChat: https://wa.me/${phoneNumber}`);
   }
 }
 
@@ -385,11 +430,11 @@ app.listen(PORT, () => {
   console.log(`   Lead Template: campaign_women`);
   console.log(`   Executive Template: new_lead_campaign`);
   console.log('='.repeat(60));
-  console.log('📌 LINKS FROM ENVIRONMENT:');
-  console.log(`   {{1}} Mammography: ${process.env.MAMMOGRAPHY_LINK || 'Not set'}`);
-  console.log(`   {{2}} DEXA: ${process.env.DEXA_LINK || 'Not set'}`);
-  console.log(`   {{3}} Blood Package: ${process.env.BLOOD_PACKAGE_LINK || 'Not set'}`);
-  console.log(`   {{4}} Booking: ${process.env.BOOKING_LINK || 'Not set'}`);
+  console.log('📌 PARAMETERS (Template Variables):');
+  console.log(`   {{1}} = MAMMOGRAPHY_LINK: ${process.env.MAMMOGRAPHY_LINK || 'Not set'}`);
+  console.log(`   {{2}} = DEXA_LINK: ${process.env.DEXA_LINK || 'Not set'}`);
+  console.log(`   {{3}} = BLOOD_PACKAGE_LINK: ${process.env.BLOOD_PACKAGE_LINK || 'Not set'}`);
+  console.log(`   {{4}} = BOOKING_LINK: ${process.env.BOOKING_LINK || 'Not set'}`);
   console.log('='.repeat(60));
   console.log('👥 EXECUTIVES (Round Robin):');
   executives.forEach((exec, i) => {
